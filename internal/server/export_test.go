@@ -20,6 +20,7 @@ import (
 	"context"
 
 	"github.com/go-logr/logr"
+	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	configv1beta1 "github.com/projectsveltos/addon-controller/api/v1beta1"
@@ -32,6 +33,48 @@ import (
 func NewTestInstance(c client.Client, logger logr.Logger) *instance {
 	return &instance{client: c, logger: logger}
 }
+
+// NewTestInstanceWithConfig is like NewTestInstance but also sets config, which the
+// canList*/canGet* SubjectAccessReview checks need to build a real clientset. Used by tests
+// that exercise real RBAC evaluation against an envtest apiserver.
+func NewTestInstanceWithConfig(cfg *rest.Config, c client.Client, logger logr.Logger) *instance {
+	return &instance{config: cfg, client: c, logger: logger}
+}
+
+// Exports of the canList* SubjectAccessReview checks, one per resource type, for tests that
+// verify the Resource field (and Groups) sent matches a real RBAC rule (see k8s_utils_test.go).
+func (m *instance) CanListSveltosClusters(user string, groups []string) (bool, error) {
+	return m.canListSveltosClusters(user, groups)
+}
+func (m *instance) CanListCAPIClusters(user string, groups []string) (bool, error) {
+	return m.canListCAPIClusters(user, groups)
+}
+func (m *instance) CanListClusterProfiles(user string, groups []string) (bool, error) {
+	return m.canListClusterProfiles(user, groups)
+}
+func (m *instance) CanListProfiles(user string, groups []string) (bool, error) {
+	return m.canListProfiles(user, groups)
+}
+func (m *instance) CanListClusterSummaries(user string, groups []string) (bool, error) {
+	return m.canListClusterSummaries(user, groups)
+}
+func (m *instance) CanListEventTriggers(user string, groups []string) (bool, error) {
+	return m.canListEventTriggers(user, groups)
+}
+func (m *instance) CanListClassifiers(user string, groups []string) (bool, error) {
+	return m.canListClassifiers(user, groups)
+}
+func (m *instance) CanListManagementClusterClassifiers(user string, groups []string) (bool, error) {
+	return m.canListManagementClusterClassifiers(user, groups)
+}
+
+// IsCAPIInstalled exposes isCAPIInstalled for tests.
+func (m *instance) IsCAPIInstalled(ctx context.Context) (bool, error) {
+	return m.isCAPIInstalled(ctx)
+}
+
+// CapiClusterCRDName exposes capiClusterCRDName for tests.
+var CapiClusterCRDName = capiClusterCRDName
 
 // GetHelmChartsForCluster exposes the unexported getHelmChartsForCluster for tests, always
 // passing no release filters.
@@ -49,12 +92,14 @@ func (cc clusterCounts) SveltosNotReady() int { return cc.sveltosNotReady }
 func (cc clusterCounts) PullMode() int        { return cc.pullMode }
 
 // CountClusters is a test helper that bypasses SAR by accepting explicit canList booleans.
-func (m *instance) CountClusters(ctx context.Context, canListSveltos, canListCAPI bool, user string) (clusterCounts, error) {
-	sveltos, err := m.GetManagedSveltosClusters(ctx, canListSveltos, user)
+func (m *instance) CountClusters(ctx context.Context, canListSveltos, canListCAPI bool, user string,
+	groups []string) (clusterCounts, error) {
+
+	sveltos, err := m.GetManagedSveltosClusters(ctx, canListSveltos, user, groups)
 	if err != nil {
 		return clusterCounts{}, err
 	}
-	capi, err := m.GetManagedCAPIClusters(ctx, canListCAPI, user)
+	capi, err := m.GetManagedCAPIClusters(ctx, canListCAPI, user, groups)
 	if err != nil {
 		return clusterCounts{}, err
 	}
@@ -80,8 +125,10 @@ func (m *instance) CountClusters(ctx context.Context, canListSveltos, canListCAP
 }
 
 // CountProfilesByKind is a test helper that bypasses SAR by accepting explicit canList booleans.
-func (m *instance) CountProfilesByKind(ctx context.Context, canListCP, canListP bool, user string) (clusterProfiles, profiles int, err error) {
-	accessible, err := m.GetProfiles(ctx, canListCP, canListP, user)
+func (m *instance) CountProfilesByKind(ctx context.Context, canListCP, canListP bool, user string,
+	groups []string) (clusterProfiles, profiles int, err error) {
+
+	accessible, err := m.GetProfiles(ctx, canListCP, canListP, user, groups)
 	if err != nil {
 		return 0, 0, err
 	}

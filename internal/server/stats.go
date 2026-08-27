@@ -49,33 +49,33 @@ type clusterCounts struct {
 	pullMode        int
 }
 
-func (m *instance) getSveltosStats(ctx context.Context, user string) (Stats, error) {
-	cc, err := m.countClusters(ctx, user)
+func (m *instance) getSveltosStats(ctx context.Context, user string, groups []string) (Stats, error) {
+	cc, err := m.countClusters(ctx, user, groups)
 	if err != nil {
 		return Stats{}, err
 	}
 
-	clusterProfiles, profiles, err := m.countClusterProfilesAndProfiles(ctx, user)
+	clusterProfiles, profiles, err := m.countClusterProfilesAndProfiles(ctx, user, groups)
 	if err != nil {
 		return Stats{}, err
 	}
 
-	clusterSummaries, err := m.countClusterSummaries(ctx, user)
+	clusterSummaries, err := m.countClusterSummaries(ctx, user, groups)
 	if err != nil {
 		return Stats{}, err
 	}
 
-	eventTriggers, err := m.countEventTriggers(ctx, user)
+	eventTriggers, err := m.countEventTriggers(ctx, user, groups)
 	if err != nil {
 		return Stats{}, err
 	}
 
-	classifiers, err := m.countClassifiers(ctx, user)
+	classifiers, err := m.countClassifiers(ctx, user, groups)
 	if err != nil {
 		return Stats{}, err
 	}
 
-	managementClusterClassifiers, err := m.countManagementClusterClassifiers(ctx, user)
+	managementClusterClassifiers, err := m.countManagementClusterClassifiers(ctx, user, groups)
 	if err != nil {
 		return Stats{}, err
 	}
@@ -95,21 +95,21 @@ func (m *instance) getSveltosStats(ctx context.Context, user string) (Stats, err
 	}, nil
 }
 
-func (m *instance) countClusters(ctx context.Context, user string) (clusterCounts, error) {
-	canListSveltos, err := m.canListSveltosClusters(user)
+func (m *instance) countClusters(ctx context.Context, user string, groups []string) (clusterCounts, error) {
+	canListSveltos, err := m.canListSveltosClusters(user, groups)
 	if err != nil {
 		return clusterCounts{}, err
 	}
-	canListCAPI, err := m.canListCAPIClusters(user)
+	canListCAPI, err := m.canListCAPIClusters(user, groups)
 	if err != nil {
 		return clusterCounts{}, err
 	}
 
-	sveltos, err := m.GetManagedSveltosClusters(ctx, canListSveltos, user)
+	sveltos, err := m.GetManagedSveltosClusters(ctx, canListSveltos, user, groups)
 	if err != nil {
 		return clusterCounts{}, err
 	}
-	capi, err := m.GetManagedCAPIClusters(ctx, canListCAPI, user)
+	capi, err := m.GetManagedCAPIClusters(ctx, canListCAPI, user, groups)
 	if err != nil {
 		return clusterCounts{}, err
 	}
@@ -135,17 +135,19 @@ func (m *instance) countClusters(ctx context.Context, user string) (clusterCount
 	return cc, nil
 }
 
-func (m *instance) countClusterProfilesAndProfiles(ctx context.Context, user string) (clusterProfiles, profiles int, err error) {
-	canListCP, err := m.canListClusterProfiles(user)
+func (m *instance) countClusterProfilesAndProfiles(ctx context.Context, user string, groups []string) (
+	clusterProfiles, profiles int, err error) {
+
+	canListCP, err := m.canListClusterProfiles(user, groups)
 	if err != nil {
 		return 0, 0, err
 	}
-	canListP, err := m.canListProfiles(user)
+	canListP, err := m.canListProfiles(user, groups)
 	if err != nil {
 		return 0, 0, err
 	}
 
-	accessible, err := m.GetProfiles(ctx, canListCP, canListP, user)
+	accessible, err := m.GetProfiles(ctx, canListCP, canListP, user, groups)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -162,8 +164,8 @@ func (m *instance) countClusterProfilesAndProfiles(ctx context.Context, user str
 	return clusterProfiles, profiles, nil
 }
 
-func (m *instance) countClusterSummaries(ctx context.Context, user string) (int, error) {
-	canList, err := m.canListClusterSummaries(user)
+func (m *instance) countClusterSummaries(ctx context.Context, user string, groups []string) (int, error) {
+	canList, err := m.canListClusterSummaries(user, groups)
 	if err != nil {
 		return 0, err
 	}
@@ -183,7 +185,7 @@ func (m *instance) countClusterSummaries(ctx context.Context, user string) (int,
 	count := 0
 	for i := range summaries.Items {
 		s := &summaries.Items[i]
-		ok, err := m.canGetClusterSummary(s.Namespace, s.Name, user)
+		ok, err := m.canGetClusterSummary(s.Namespace, s.Name, user, groups)
 		if err != nil {
 			continue
 		}
@@ -194,8 +196,8 @@ func (m *instance) countClusterSummaries(ctx context.Context, user string) (int,
 	return count, nil
 }
 
-func (m *instance) countEventTriggers(ctx context.Context, user string) (int, error) {
-	canList, err := m.canListEventTriggers(user)
+func (m *instance) countEventTriggers(ctx context.Context, user string, groups []string) (int, error) {
+	canList, err := m.canListEventTriggers(user, groups)
 	if err != nil {
 		return 0, err
 	}
@@ -216,7 +218,7 @@ func (m *instance) countEventTriggers(ctx context.Context, user string) (int, er
 			count++
 			continue
 		}
-		ok, err := m.canGetEventTrigger(et.Name, user)
+		ok, err := m.canGetEventTrigger(et.Name, user, groups)
 		if err != nil {
 			continue
 		}
@@ -227,8 +229,8 @@ func (m *instance) countEventTriggers(ctx context.Context, user string) (int, er
 	return count, nil
 }
 
-func (m *instance) countClassifiers(ctx context.Context, user string) (int, error) {
-	canList, err := m.canListClassifiers(user)
+func (m *instance) countClassifiers(ctx context.Context, user string, groups []string) (int, error) {
+	canList, err := m.canListClassifiers(user, groups)
 	if err != nil {
 		return 0, err
 	}
@@ -249,7 +251,7 @@ func (m *instance) countClassifiers(ctx context.Context, user string) (int, erro
 			count++
 			continue
 		}
-		ok, err := m.canGetClassifier(classifier.Name, user)
+		ok, err := m.canGetClassifier(classifier.Name, user, groups)
 		if err != nil {
 			continue
 		}
@@ -260,8 +262,8 @@ func (m *instance) countClassifiers(ctx context.Context, user string) (int, erro
 	return count, nil
 }
 
-func (m *instance) countManagementClusterClassifiers(ctx context.Context, user string) (int, error) {
-	canList, err := m.canListManagementClusterClassifiers(user)
+func (m *instance) countManagementClusterClassifiers(ctx context.Context, user string, groups []string) (int, error) {
+	canList, err := m.canListManagementClusterClassifiers(user, groups)
 	if err != nil {
 		return 0, err
 	}
@@ -282,7 +284,7 @@ func (m *instance) countManagementClusterClassifiers(ctx context.Context, user s
 			count++
 			continue
 		}
-		ok, err := m.canGetManagementClusterClassifier(mcc.Name, user)
+		ok, err := m.canGetManagementClusterClassifier(mcc.Name, user, groups)
 		if err != nil {
 			continue
 		}

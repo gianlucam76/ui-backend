@@ -42,6 +42,19 @@ import (
 const (
 	verbList = "list"
 	verbGet  = "get"
+
+	// SubjectAccessReview.Spec.ResourceAttributes.Resource must be the plural, lower-case
+	// REST resource name (the same string that appears in an RBAC rule's resources list),
+	// not the Kind. Using a Kind here (e.g. "SveltosCluster") never matches a real RBAC
+	// rule, so every check below silently denies non-wildcard roles.
+	resourceSveltosClusters              = "sveltosclusters"
+	resourceClusters                     = "clusters"
+	resourceClusterProfiles              = "clusterprofiles"
+	resourceProfiles                     = "profiles"
+	resourceClusterSummaries             = "clustersummaries"
+	resourceEventTriggers                = "eventtriggers"
+	resourceClassifiers                  = "classifiers"
+	resourceManagementClusterClassifiers = "managementclusterclassifiers"
 )
 
 func (m *instance) getKubernetesRestConfig(token string) (*rest.Config, error) {
@@ -63,29 +76,35 @@ func (m *instance) getKubernetesRestConfig(token string) (*rest.Config, error) {
 	}, nil
 }
 
-func (m *instance) getUserFromToken(token string) (string, error) {
+// getUserFromToken returns the caller's username and group memberships, as reported by the
+// API server for the given token. Both must be propagated into every SubjectAccessReview
+// below: per the SubjectAccessReviewSpec.User doc, specifying User without Groups is
+// interpreted as "what if User were not a member of any groups", so omitting Groups makes
+// every RBAC binding to a Group subject (the common shape for OIDC/Entra ID group-based
+// access) invisible to these checks.
+func (m *instance) getUserFromToken(token string) (user string, groups []string, err error) {
 	config, err := m.getKubernetesRestConfig(token)
 	if err != nil {
 		m.logger.V(logs.LogInfo).Info(fmt.Sprintf("failed to get restConfig: %v", err))
-		return "", err
+		return "", nil, err
 	}
 
 	authV1Client, err := authenticationv1client.NewForConfig(config)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	res, err := authV1Client.SelfSubjectReviews().
 		Create(context.TODO(), &authenticationv1.SelfSubjectReview{}, metav1.CreateOptions{})
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
-	return res.Status.UserInfo.Username, nil
+	return res.Status.UserInfo.Username, res.Status.UserInfo.Groups, nil
 }
 
 // canListSveltosClusters returns true if user can list all SveltosClusters in all namespaces
-func (m *instance) canListSveltosClusters(user string) (bool, error) {
+func (m *instance) canListSveltosClusters(user string, groups []string) (bool, error) {
 	// Create a Kubernetes clientset
 	clientset, err := kubernetes.NewForConfig(m.config)
 	if err != nil {
@@ -99,9 +118,10 @@ func (m *instance) canListSveltosClusters(user string) (bool, error) {
 				Verb:     verbList,
 				Group:    libsveltosv1beta1.GroupVersion.Group,
 				Version:  libsveltosv1beta1.GroupVersion.Version,
-				Resource: libsveltosv1beta1.SveltosClusterKind,
+				Resource: resourceSveltosClusters,
 			},
-			User: user,
+			User:   user,
+			Groups: groups,
 		},
 	}
 
@@ -115,7 +135,7 @@ func (m *instance) canListSveltosClusters(user string) (bool, error) {
 }
 
 // canGetSveltosCluster returns true if user can access SveltosCluster clusterNamespace:clusterName
-func (m *instance) canGetSveltosCluster(clusterNamespace, clusterName, user string) (bool, error) {
+func (m *instance) canGetSveltosCluster(clusterNamespace, clusterName, user string, groups []string) (bool, error) {
 	// Create a Kubernetes clientset
 	clientset, err := kubernetes.NewForConfig(m.config)
 	if err != nil {
@@ -129,11 +149,12 @@ func (m *instance) canGetSveltosCluster(clusterNamespace, clusterName, user stri
 				Verb:      verbGet,
 				Group:     libsveltosv1beta1.GroupVersion.Group,
 				Version:   libsveltosv1beta1.GroupVersion.Version,
-				Resource:  libsveltosv1beta1.SveltosClusterKind,
+				Resource:  resourceSveltosClusters,
 				Namespace: clusterNamespace,
 				Name:      clusterName,
 			},
-			User: user,
+			User:   user,
+			Groups: groups,
 		},
 	}
 
@@ -147,7 +168,7 @@ func (m *instance) canGetSveltosCluster(clusterNamespace, clusterName, user stri
 }
 
 // canListCAPIClusters returns true if user can list all CAPI Clusters in all namespaces
-func (m *instance) canListCAPIClusters(user string) (bool, error) {
+func (m *instance) canListCAPIClusters(user string, groups []string) (bool, error) {
 	// Create a Kubernetes clientset
 	clientset, err := kubernetes.NewForConfig(m.config)
 	if err != nil {
@@ -161,9 +182,10 @@ func (m *instance) canListCAPIClusters(user string) (bool, error) {
 				Verb:     verbList,
 				Group:    clusterv1.GroupVersion.Group,
 				Version:  clusterv1.GroupVersion.Version,
-				Resource: clusterv1.ClusterKind,
+				Resource: resourceClusters,
 			},
-			User: user,
+			User:   user,
+			Groups: groups,
 		},
 	}
 
@@ -177,7 +199,7 @@ func (m *instance) canListCAPIClusters(user string) (bool, error) {
 }
 
 // canGetCAPICluster returns true if user can access CAPI Cluster clusterNamespace:clusterName
-func (m *instance) canGetCAPICluster(clusterNamespace, clusterName, user string) (bool, error) {
+func (m *instance) canGetCAPICluster(clusterNamespace, clusterName, user string, groups []string) (bool, error) {
 	// Create a Kubernetes clientset
 	clientset, err := kubernetes.NewForConfig(m.config)
 	if err != nil {
@@ -191,11 +213,12 @@ func (m *instance) canGetCAPICluster(clusterNamespace, clusterName, user string)
 				Verb:      verbGet,
 				Group:     clusterv1.GroupVersion.Group,
 				Version:   clusterv1.GroupVersion.Version,
-				Resource:  clusterv1.ClusterKind,
+				Resource:  resourceClusters,
 				Namespace: clusterNamespace,
 				Name:      clusterName,
 			},
-			User: user,
+			User:   user,
+			Groups: groups,
 		},
 	}
 
@@ -209,18 +232,18 @@ func (m *instance) canGetCAPICluster(clusterNamespace, clusterName, user string)
 }
 
 // canGetCluster verifies whether user has permission to view CAPI/Sveltos Cluster
-func (m *instance) canGetCluster(clusterNamespace, clusterName, user string,
+func (m *instance) canGetCluster(clusterNamespace, clusterName, user string, groups []string,
 	clusterType libsveltosv1beta1.ClusterType) (bool, error) {
 
 	if clusterType == libsveltosv1beta1.ClusterTypeCapi {
-		return m.canGetCAPICluster(clusterNamespace, clusterName, user)
+		return m.canGetCAPICluster(clusterNamespace, clusterName, user, groups)
 	}
 
-	return m.canGetSveltosCluster(clusterNamespace, clusterName, user)
+	return m.canGetSveltosCluster(clusterNamespace, clusterName, user, groups)
 }
 
 // canListClusterProfiles verifies whether user has permission to view ClusterProfiles
-func (m *instance) canListClusterProfiles(user string) (bool, error) {
+func (m *instance) canListClusterProfiles(user string, groups []string) (bool, error) {
 	// Create a Kubernetes clientset
 	clientset, err := kubernetes.NewForConfig(m.config)
 	if err != nil {
@@ -234,9 +257,10 @@ func (m *instance) canListClusterProfiles(user string) (bool, error) {
 				Verb:     verbGet,
 				Group:    configv1beta1.GroupVersion.Group,
 				Version:  configv1beta1.GroupVersion.Version,
-				Resource: configv1beta1.ClusterProfileKind,
+				Resource: resourceClusterProfiles,
 			},
-			User: user,
+			User:   user,
+			Groups: groups,
 		},
 	}
 
@@ -250,7 +274,7 @@ func (m *instance) canListClusterProfiles(user string) (bool, error) {
 }
 
 // canListEventTriggers verifies whether user has permission to view EventTriggers
-func (m *instance) canListEventTriggers(user string) (bool, error) {
+func (m *instance) canListEventTriggers(user string, groups []string) (bool, error) {
 	// Create a Kubernetes clientset
 	clientset, err := kubernetes.NewForConfig(m.config)
 	if err != nil {
@@ -264,9 +288,10 @@ func (m *instance) canListEventTriggers(user string) (bool, error) {
 				Verb:     verbGet,
 				Group:    eventv1beta1.GroupVersion.Group,
 				Version:  eventv1beta1.GroupVersion.Version,
-				Resource: eventv1beta1.EventTriggerKind,
+				Resource: resourceEventTriggers,
 			},
-			User: user,
+			User:   user,
+			Groups: groups,
 		},
 	}
 
@@ -280,7 +305,7 @@ func (m *instance) canListEventTriggers(user string) (bool, error) {
 }
 
 // canGetClusterProfile returns true if user can access ClusterProfile
-func (m *instance) canGetClusterProfile(clusterProfileName, user string) (bool, error) {
+func (m *instance) canGetClusterProfile(clusterProfileName, user string, groups []string) (bool, error) {
 	// Create a Kubernetes clientset
 	clientset, err := kubernetes.NewForConfig(m.config)
 	if err != nil {
@@ -294,10 +319,11 @@ func (m *instance) canGetClusterProfile(clusterProfileName, user string) (bool, 
 				Verb:     verbGet,
 				Group:    configv1beta1.GroupVersion.Group,
 				Version:  configv1beta1.GroupVersion.Version,
-				Resource: configv1beta1.ClusterProfileKind,
+				Resource: resourceClusterProfiles,
 				Name:     clusterProfileName,
 			},
-			User: user,
+			User:   user,
+			Groups: groups,
 		},
 	}
 
@@ -311,7 +337,7 @@ func (m *instance) canGetClusterProfile(clusterProfileName, user string) (bool, 
 }
 
 // canListProfiles verifies whether user has permission to view Profiles
-func (m *instance) canListProfiles(user string) (bool, error) {
+func (m *instance) canListProfiles(user string, groups []string) (bool, error) {
 	// Create a Kubernetes clientset
 	clientset, err := kubernetes.NewForConfig(m.config)
 	if err != nil {
@@ -325,9 +351,10 @@ func (m *instance) canListProfiles(user string) (bool, error) {
 				Verb:     verbGet,
 				Group:    configv1beta1.GroupVersion.Group,
 				Version:  configv1beta1.GroupVersion.Version,
-				Resource: configv1beta1.ProfileKind,
+				Resource: resourceProfiles,
 			},
-			User: user,
+			User:   user,
+			Groups: groups,
 		},
 	}
 
@@ -341,7 +368,7 @@ func (m *instance) canListProfiles(user string) (bool, error) {
 }
 
 // canGetProfile returns true if user can access Profile
-func (m *instance) canGetProfile(profileNamespace, profileName, user string) (bool, error) {
+func (m *instance) canGetProfile(profileNamespace, profileName, user string, groups []string) (bool, error) {
 	// Create a Kubernetes clientset
 	clientset, err := kubernetes.NewForConfig(m.config)
 	if err != nil {
@@ -355,11 +382,12 @@ func (m *instance) canGetProfile(profileNamespace, profileName, user string) (bo
 				Verb:      verbGet,
 				Group:     configv1beta1.GroupVersion.Group,
 				Version:   configv1beta1.GroupVersion.Version,
-				Resource:  configv1beta1.ProfileKind,
+				Resource:  resourceProfiles,
 				Name:      profileName,
 				Namespace: profileNamespace,
 			},
-			User: user,
+			User:   user,
+			Groups: groups,
 		},
 	}
 
@@ -390,7 +418,7 @@ func (m *instance) getProfileInstance(ctx context.Context, namespace, name strin
 // - profile Spec
 // - list of all matching clusters. For each matching cluster, status of each feature is reported.
 func (m *instance) getProfileSpecAndMatchingClusters(ctx context.Context, profileRef *corev1.ObjectReference,
-	user string) (*configv1beta1.Spec, []MatchingClusters, error) {
+	user string, groups []string) (*configv1beta1.Spec, []MatchingClusters, error) {
 
 	var spec configv1beta1.Spec
 	var matchingClusters []corev1.ObjectReference
@@ -414,7 +442,7 @@ func (m *instance) getProfileSpecAndMatchingClusters(ctx context.Context, profil
 	accessibleMatchingClusters := make([]MatchingClusters, 0)
 	for i := range matchingClusters {
 		cluster := &matchingClusters[i]
-		canGet, err := m.canGetCluster(cluster.Namespace, cluster.Name, user, clusterproxy.GetClusterType(cluster))
+		canGet, err := m.canGetCluster(cluster.Namespace, cluster.Name, user, groups, clusterproxy.GetClusterType(cluster))
 		if err != nil {
 			return nil, nil, err
 		}
@@ -444,7 +472,7 @@ func (m *instance) getProfileSpecAndMatchingClusters(ctx context.Context, profil
 }
 
 // canListClusterSummaries verifies whether user has permission to list ClusterSummaries
-func (m *instance) canListClusterSummaries(user string) (bool, error) {
+func (m *instance) canListClusterSummaries(user string, groups []string) (bool, error) {
 	clientset, err := kubernetes.NewForConfig(m.config)
 	if err != nil {
 		m.logger.V(logs.LogInfo).Info(fmt.Sprintf("failed to get clientset: %v", err))
@@ -457,9 +485,10 @@ func (m *instance) canListClusterSummaries(user string) (bool, error) {
 				Verb:     verbList,
 				Group:    configv1beta1.GroupVersion.Group,
 				Version:  configv1beta1.GroupVersion.Version,
-				Resource: configv1beta1.ClusterSummaryKind,
+				Resource: resourceClusterSummaries,
 			},
-			User: user,
+			User:   user,
+			Groups: groups,
 		},
 	}
 
@@ -473,7 +502,7 @@ func (m *instance) canListClusterSummaries(user string) (bool, error) {
 }
 
 // canGetClusterSummary returns true if user can access ClusterSummary namespace/name
-func (m *instance) canGetClusterSummary(namespace, name, user string) (bool, error) {
+func (m *instance) canGetClusterSummary(namespace, name, user string, groups []string) (bool, error) {
 	clientset, err := kubernetes.NewForConfig(m.config)
 	if err != nil {
 		m.logger.V(logs.LogInfo).Info(fmt.Sprintf("failed to get clientset: %v", err))
@@ -486,11 +515,12 @@ func (m *instance) canGetClusterSummary(namespace, name, user string) (bool, err
 				Verb:      verbGet,
 				Group:     configv1beta1.GroupVersion.Group,
 				Version:   configv1beta1.GroupVersion.Version,
-				Resource:  configv1beta1.ClusterSummaryKind,
+				Resource:  resourceClusterSummaries,
 				Namespace: namespace,
 				Name:      name,
 			},
-			User: user,
+			User:   user,
+			Groups: groups,
 		},
 	}
 
@@ -504,7 +534,7 @@ func (m *instance) canGetClusterSummary(namespace, name, user string) (bool, err
 }
 
 // canGetEventTrigger returns true if user can access EventTrigger name
-func (m *instance) canGetEventTrigger(name, user string) (bool, error) {
+func (m *instance) canGetEventTrigger(name, user string, groups []string) (bool, error) {
 	clientset, err := kubernetes.NewForConfig(m.config)
 	if err != nil {
 		m.logger.V(logs.LogInfo).Info(fmt.Sprintf("failed to get clientset: %v", err))
@@ -517,10 +547,11 @@ func (m *instance) canGetEventTrigger(name, user string) (bool, error) {
 				Verb:     verbGet,
 				Group:    eventv1beta1.GroupVersion.Group,
 				Version:  eventv1beta1.GroupVersion.Version,
-				Resource: eventv1beta1.EventTriggerKind,
+				Resource: resourceEventTriggers,
 				Name:     name,
 			},
-			User: user,
+			User:   user,
+			Groups: groups,
 		},
 	}
 
@@ -534,7 +565,7 @@ func (m *instance) canGetEventTrigger(name, user string) (bool, error) {
 }
 
 // canListClassifiers verifies whether user has permission to view Classifiers
-func (m *instance) canListClassifiers(user string) (bool, error) {
+func (m *instance) canListClassifiers(user string, groups []string) (bool, error) {
 	clientset, err := kubernetes.NewForConfig(m.config)
 	if err != nil {
 		m.logger.V(logs.LogInfo).Info(fmt.Sprintf("failed to get clientset: %v", err))
@@ -547,9 +578,10 @@ func (m *instance) canListClassifiers(user string) (bool, error) {
 				Verb:     verbGet,
 				Group:    libsveltosv1beta1.GroupVersion.Group,
 				Version:  libsveltosv1beta1.GroupVersion.Version,
-				Resource: libsveltosv1beta1.ClassifierKind,
+				Resource: resourceClassifiers,
 			},
-			User: user,
+			User:   user,
+			Groups: groups,
 		},
 	}
 
@@ -563,7 +595,7 @@ func (m *instance) canListClassifiers(user string) (bool, error) {
 }
 
 // canGetClassifier returns true if user can access Classifier name
-func (m *instance) canGetClassifier(name, user string) (bool, error) {
+func (m *instance) canGetClassifier(name, user string, groups []string) (bool, error) {
 	clientset, err := kubernetes.NewForConfig(m.config)
 	if err != nil {
 		m.logger.V(logs.LogInfo).Info(fmt.Sprintf("failed to get clientset: %v", err))
@@ -576,10 +608,11 @@ func (m *instance) canGetClassifier(name, user string) (bool, error) {
 				Verb:     verbGet,
 				Group:    libsveltosv1beta1.GroupVersion.Group,
 				Version:  libsveltosv1beta1.GroupVersion.Version,
-				Resource: libsveltosv1beta1.ClassifierKind,
+				Resource: resourceClassifiers,
 				Name:     name,
 			},
-			User: user,
+			User:   user,
+			Groups: groups,
 		},
 	}
 
@@ -594,7 +627,7 @@ func (m *instance) canGetClassifier(name, user string) (bool, error) {
 
 // canListManagementClusterClassifiers verifies whether user has permission to view
 // ManagementClusterClassifiers
-func (m *instance) canListManagementClusterClassifiers(user string) (bool, error) {
+func (m *instance) canListManagementClusterClassifiers(user string, groups []string) (bool, error) {
 	clientset, err := kubernetes.NewForConfig(m.config)
 	if err != nil {
 		m.logger.V(logs.LogInfo).Info(fmt.Sprintf("failed to get clientset: %v", err))
@@ -607,9 +640,10 @@ func (m *instance) canListManagementClusterClassifiers(user string) (bool, error
 				Verb:     verbGet,
 				Group:    libsveltosv1beta1.GroupVersion.Group,
 				Version:  libsveltosv1beta1.GroupVersion.Version,
-				Resource: libsveltosv1beta1.ManagementClusterClassifierKind,
+				Resource: resourceManagementClusterClassifiers,
 			},
-			User: user,
+			User:   user,
+			Groups: groups,
 		},
 	}
 
@@ -623,7 +657,7 @@ func (m *instance) canListManagementClusterClassifiers(user string) (bool, error
 }
 
 // canGetManagementClusterClassifier returns true if user can access ManagementClusterClassifier name
-func (m *instance) canGetManagementClusterClassifier(name, user string) (bool, error) {
+func (m *instance) canGetManagementClusterClassifier(name, user string, groups []string) (bool, error) {
 	clientset, err := kubernetes.NewForConfig(m.config)
 	if err != nil {
 		m.logger.V(logs.LogInfo).Info(fmt.Sprintf("failed to get clientset: %v", err))
@@ -636,10 +670,11 @@ func (m *instance) canGetManagementClusterClassifier(name, user string) (bool, e
 				Verb:     verbGet,
 				Group:    libsveltosv1beta1.GroupVersion.Group,
 				Version:  libsveltosv1beta1.GroupVersion.Version,
-				Resource: libsveltosv1beta1.ManagementClusterClassifierKind,
+				Resource: resourceManagementClusterClassifiers,
 				Name:     name,
 			},
-			User: user,
+			User:   user,
+			Groups: groups,
 		},
 	}
 

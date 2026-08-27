@@ -23,7 +23,10 @@ import (
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
@@ -155,7 +158,29 @@ func GetManagerInstance() *instance {
 	return managerInstance
 }
 
-func (m *instance) GetManagedSveltosClusters(ctx context.Context, canListAll bool, user string,
+const (
+	// capiClusterCRDName is the name of the CustomResourceDefinition that registers CAPI's
+	// Cluster kind. ClusterAPI is optional: this CRD may not exist in the management cluster.
+	capiClusterCRDName = "clusters.cluster.x-k8s.io"
+)
+
+// isCAPIInstalled returns true if the ClusterAPI Cluster CRD is registered in the
+// management cluster. Callers must treat "not installed" as zero CAPI clusters rather
+// than an error: a client.List for clusterv1.Cluster against a cluster without this CRD
+// fails at the RESTMapper with a "no matches for kind" error, not a proper API error.
+func (m *instance) isCAPIInstalled(ctx context.Context) (bool, error) {
+	clusterCRD := &apiextensionsv1.CustomResourceDefinition{}
+	err := m.client.Get(ctx, types.NamespacedName{Name: capiClusterCRDName}, clusterCRD)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+func (m *instance) GetManagedSveltosClusters(ctx context.Context, canListAll bool, user string, groups []string,
 ) (map[corev1.ObjectReference]ClusterInfo, error) {
 
 	// If user can list all SveltosClusters, return cached data
@@ -177,7 +202,7 @@ func (m *instance) GetManagedSveltosClusters(ctx context.Context, canListAll boo
 	result := map[corev1.ObjectReference]ClusterInfo{}
 	for i := range sveltosClusters.Items {
 		sc := &sveltosClusters.Items[i]
-		ok, err := m.canGetSveltosCluster(sc.Namespace, sc.Name, user)
+		ok, err := m.canGetSveltosCluster(sc.Namespace, sc.Name, user, groups)
 		if err != nil {
 			continue
 		}
@@ -199,7 +224,7 @@ func (m *instance) GetManagedSveltosClusters(ctx context.Context, canListAll boo
 	return result, nil
 }
 
-func (m *instance) GetManagedCAPIClusters(ctx context.Context, canListAll bool, user string,
+func (m *instance) GetManagedCAPIClusters(ctx context.Context, canListAll bool, user string, groups []string,
 ) (map[corev1.ObjectReference]ClusterInfo, error) {
 
 	// If user can list all CAPI Clusters, return cached data
@@ -209,10 +234,22 @@ func (m *instance) GetManagedCAPIClusters(ctx context.Context, canListAll bool, 
 		return m.capiClusters, nil
 	}
 
-	// If user cannot list all SveltosClusters, run a List so to get only SveltosClusters user has access to
+	// ClusterAPI is optional. If its Cluster CRD isn't installed, there are no CAPI clusters
+	// to report; listing clusterv1.Cluster against a cluster without this CRD would otherwise
+	// fail at the RESTMapper instead of returning a normal empty-list response.
+	installed, err := m.isCAPIInstalled(ctx)
+	if err != nil {
+		m.logger.V(logs.LogInfo).Info(fmt.Sprintf("failed to check for ClusterAPI CRD: %v", err))
+		return nil, err
+	}
+	if !installed {
+		return map[corev1.ObjectReference]ClusterInfo{}, nil
+	}
+
+	// If user cannot list all CAPI Clusters, run a List so to get only Clusters user has access to
 	// List (vs using m.capiClusters) is intentionally done to avoid taking lock for too long
 	clusters := &clusterv1.ClusterList{}
-	err := m.client.List(ctx, clusters)
+	err = m.client.List(ctx, clusters)
 	if err != nil {
 		m.logger.V(logs.LogInfo).Info(fmt.Sprintf("failed to list Clusters: %v", err))
 		return nil, err
@@ -221,7 +258,7 @@ func (m *instance) GetManagedCAPIClusters(ctx context.Context, canListAll bool, 
 	result := map[corev1.ObjectReference]ClusterInfo{}
 	for i := range clusters.Items {
 		capiCluster := &clusters.Items[i]
-		ok, err := m.canGetCAPICluster(capiCluster.Namespace, capiCluster.Name, user)
+		ok, err := m.canGetCAPICluster(capiCluster.Namespace, capiCluster.Name, user, groups)
 		if err != nil {
 			continue
 		}
@@ -659,6 +696,7 @@ func (m *instance) validateToken(token string) error {
 }
 
 func (m *instance) GetProfiles(ctx context.Context, canListClusterProfiles, canListProfiles bool, user string,
+	groups []string,
 ) (map[corev1.ObjectReference]ProfileInfo, error) {
 
 	if canListClusterProfiles && canListProfiles {
@@ -671,11 +709,11 @@ func (m *instance) GetProfiles(ctx context.Context, canListClusterProfiles, canL
 	profileCopy := m.getCopyOfProfiles()
 	result := map[corev1.ObjectReference]ProfileInfo{}
 
-	err := m.getAccessibleClusterProfiles(ctx, user, profileCopy, result)
+	err := m.getAccessibleClusterProfiles(ctx, user, groups, profileCopy, result)
 	if err != nil {
 		return result, err
 	}
-	err = m.getAccessibleProfiles(ctx, user, profileCopy, result)
+	err = m.getAccessibleProfiles(ctx, user, groups, profileCopy, result)
 	if err != nil {
 		return result, err
 	}
@@ -799,7 +837,7 @@ func (m *instance) getCopyOfProfiles() map[corev1.ObjectReference]ProfileInfo {
 	return profileCopy
 }
 
-func (m *instance) getAccessibleClusterProfiles(ctx context.Context, user string,
+func (m *instance) getAccessibleClusterProfiles(ctx context.Context, user string, groups []string,
 	cachedProfiles, result map[corev1.ObjectReference]ProfileInfo) error {
 
 	clusterProfiles := &configv1beta1.ClusterProfileList{}
@@ -811,7 +849,7 @@ func (m *instance) getAccessibleClusterProfiles(ctx context.Context, user string
 
 	for i := range clusterProfiles.Items {
 		cp := &clusterProfiles.Items[i]
-		ok, err := m.canGetClusterProfile(cp.Name, user)
+		ok, err := m.canGetClusterProfile(cp.Name, user, groups)
 		if err != nil {
 			continue
 		}
@@ -826,7 +864,7 @@ func (m *instance) getAccessibleClusterProfiles(ctx context.Context, user string
 	return nil
 }
 
-func (m *instance) getAccessibleProfiles(ctx context.Context, user string,
+func (m *instance) getAccessibleProfiles(ctx context.Context, user string, groups []string,
 	cachedProfiles, result map[corev1.ObjectReference]ProfileInfo) error {
 
 	// If user cannot list all Profiles, run a List so to get only Profiles user has access to
@@ -840,7 +878,7 @@ func (m *instance) getAccessibleProfiles(ctx context.Context, user string,
 
 	for i := range profiles.Items {
 		p := &profiles.Items[i]
-		ok, err := m.canGetProfile(p.Namespace, p.Name, user)
+		ok, err := m.canGetProfile(p.Namespace, p.Name, user, groups)
 		if err != nil {
 			continue
 		}
