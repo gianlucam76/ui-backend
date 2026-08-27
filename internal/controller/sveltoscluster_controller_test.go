@@ -89,7 +89,7 @@ var _ = Describe("SveltosClusterReconciler", func() {
 		}
 
 		manager := server.GetManagerInstance()
-		clusters, err := manager.GetManagedSveltosClusters(context.TODO(), true, randomString())
+		clusters, err := manager.GetManagedSveltosClusters(context.TODO(), true, randomString(), nil)
 		Expect(err).To(BeNil())
 		_, ok := clusters[*cluster]
 		Expect(ok).To(BeTrue())
@@ -102,7 +102,7 @@ var _ = Describe("SveltosClusterReconciler", func() {
 		})
 		Expect(err).ToNot(HaveOccurred())
 
-		clusters, err = manager.GetManagedSveltosClusters(context.TODO(), true, randomString())
+		clusters, err = manager.GetManagedSveltosClusters(context.TODO(), true, randomString(), nil)
 		Expect(err).To(BeNil())
 		_, ok = clusters[*cluster]
 		Expect(ok).To(BeFalse())

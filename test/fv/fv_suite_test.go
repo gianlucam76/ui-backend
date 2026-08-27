@@ -29,7 +29,9 @@ import (
 	sourcev1 "github.com/fluxcd/source-controller/api/v1"
 	ginkgotypes "github.com/onsi/ginkgo/v2/types"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -44,6 +46,12 @@ var (
 	k8sClient           client.Client
 	scheme              *runtime.Scheme
 	kindWorkloadCluster *clusterv1.Cluster // This is the name of the kind workload cluster, in the form namespace/name
+
+	// restConfig and clientset are used by tests that need typed API calls (e.g. TokenRequest)
+	// or a raw REST client (e.g. port-forwarding to a pod), neither of which the
+	// controller-runtime client above supports.
+	restConfig *rest.Config
+	clientset  *kubernetes.Clientset
 )
 
 const (
@@ -77,7 +85,7 @@ func TestFv(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
-	restConfig := ctrl.GetConfigOrDie()
+	restConfig = ctrl.GetConfigOrDie()
 	// To get rid of the annoying request.go log
 	restConfig.QPS = 100
 	restConfig.Burst = 100
@@ -95,6 +103,9 @@ var _ = BeforeSuite(func() {
 
 	var err error
 	k8sClient, err = client.New(restConfig, client.Options{Scheme: scheme})
+	Expect(err).NotTo(HaveOccurred())
+
+	clientset, err = kubernetes.NewForConfig(restConfig)
 	Expect(err).NotTo(HaveOccurred())
 
 	clusterList := &clusterv1.ClusterList{}

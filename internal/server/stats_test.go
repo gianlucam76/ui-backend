@@ -53,7 +53,7 @@ var _ = Describe("Stats", func() {
 		server.InitializeManagerInstance(ctx, nil, c, sc, randomPort(), logger)
 		manager := server.GetManagerInstance()
 
-		initial, err := manager.CountClusters(ctx, true, true, randomString())
+		initial, err := manager.CountClusters(ctx, true, true, randomString(), nil)
 		Expect(err).To(BeNil())
 
 		sc1 := &libsveltosv1beta1.SveltosCluster{
@@ -74,7 +74,7 @@ var _ = Describe("Stats", func() {
 			manager.RemoveCAPICluster(capiCluster.Namespace, capiCluster.Name)
 		}()
 
-		counts, err := manager.CountClusters(ctx, true, true, randomString())
+		counts, err := manager.CountClusters(ctx, true, true, randomString(), nil)
 		Expect(err).To(BeNil())
 		Expect(counts.CAPITotal()).To(Equal(initial.CAPITotal() + 1))
 		Expect(counts.SveltosTotal()).To(Equal(initial.SveltosTotal() + 2))
@@ -87,7 +87,7 @@ var _ = Describe("Stats", func() {
 		server.InitializeManagerInstance(ctx, nil, c, sc, randomPort(), logger)
 		manager := server.GetManagerInstance()
 
-		initial, err := manager.CountClusters(ctx, true, true, randomString())
+		initial, err := manager.CountClusters(ctx, true, true, randomString(), nil)
 		Expect(err).To(BeNil())
 
 		readyCluster := &libsveltosv1beta1.SveltosCluster{
@@ -106,7 +106,7 @@ var _ = Describe("Stats", func() {
 			manager.RemoveSveltosCluster(notReadyCluster.Namespace, notReadyCluster.Name)
 		}()
 
-		counts, err := manager.CountClusters(ctx, true, true, randomString())
+		counts, err := manager.CountClusters(ctx, true, true, randomString(), nil)
 		Expect(err).To(BeNil())
 		Expect(counts.SveltosTotal()).To(BeNumerically(">=", 2))
 		Expect(counts.SveltosNotReady()).To(Equal(initial.SveltosNotReady() + 1))
@@ -119,7 +119,7 @@ var _ = Describe("Stats", func() {
 		server.InitializeManagerInstance(ctx, nil, c, sc, randomPort(), logger)
 		manager := server.GetManagerInstance()
 
-		initial, err := manager.CountClusters(ctx, true, true, randomString())
+		initial, err := manager.CountClusters(ctx, true, true, randomString(), nil)
 		Expect(err).To(BeNil())
 
 		pullCluster := &libsveltosv1beta1.SveltosCluster{
@@ -137,7 +137,7 @@ var _ = Describe("Stats", func() {
 			manager.RemoveSveltosCluster(normalCluster.Namespace, normalCluster.Name)
 		}()
 
-		counts, err := manager.CountClusters(ctx, true, true, randomString())
+		counts, err := manager.CountClusters(ctx, true, true, randomString(), nil)
 		Expect(err).To(BeNil())
 		Expect(counts.PullMode()).To(Equal(initial.PullMode() + 1))
 	})
@@ -155,12 +155,12 @@ var _ = Describe("Stats", func() {
 		manager.AddSveltosCluster(sveltosCluster)
 		// no defer needed — removal is the point of this test
 
-		before, err := manager.CountClusters(ctx, true, true, randomString())
+		before, err := manager.CountClusters(ctx, true, true, randomString(), nil)
 		Expect(err).To(BeNil())
 
 		manager.RemoveSveltosCluster(sveltosCluster.Namespace, sveltosCluster.Name)
 
-		after, err := manager.CountClusters(ctx, true, true, randomString())
+		after, err := manager.CountClusters(ctx, true, true, randomString(), nil)
 		Expect(err).To(BeNil())
 		Expect(after.SveltosTotal()).To(Equal(before.SveltosTotal() - 1))
 	})
@@ -172,7 +172,7 @@ var _ = Describe("Stats", func() {
 		server.InitializeManagerInstance(ctx, nil, c, sc, randomPort(), logger)
 		manager := server.GetManagerInstance()
 
-		initialCP, initialP, err := manager.CountProfilesByKind(ctx, true, true, randomString())
+		initialCP, initialP, err := manager.CountProfilesByKind(ctx, true, true, randomString(), nil)
 		Expect(err).To(BeNil())
 
 		tier := int32(100)
@@ -203,7 +203,7 @@ var _ = Describe("Stats", func() {
 			manager.RemoveProfile(p1)
 		}()
 
-		cpCount, pCount, err := manager.CountProfilesByKind(ctx, true, true, randomString())
+		cpCount, pCount, err := manager.CountProfilesByKind(ctx, true, true, randomString(), nil)
 		Expect(err).To(BeNil())
 		Expect(cpCount).To(Equal(initialCP + 2))
 		Expect(pCount).To(Equal(initialP + 1))
@@ -224,12 +224,12 @@ var _ = Describe("Stats", func() {
 		manager.AddProfile(cp, libsveltosv1beta1.Selector{}, 100, configv1beta1.SyncModeContinuous, nil)
 		// no defer needed — removal is the point of this test
 
-		beforeRemove, _, err := manager.CountProfilesByKind(ctx, true, true, randomString())
+		beforeRemove, _, err := manager.CountProfilesByKind(ctx, true, true, randomString(), nil)
 		Expect(err).To(BeNil())
 
 		manager.RemoveProfile(cp)
 
-		afterRemove, _, err := manager.CountProfilesByKind(ctx, true, true, randomString())
+		afterRemove, _, err := manager.CountProfilesByKind(ctx, true, true, randomString(), nil)
 		Expect(err).To(BeNil())
 		Expect(afterRemove).To(Equal(beforeRemove - 1))
 	})
@@ -286,9 +286,9 @@ var _ = Describe("Stats", func() {
 		server.InitializeManagerInstance(ctx, nil, c, sc, randomPort(), logger)
 		manager := server.GetManagerInstance()
 
-		initialClusters, err := manager.CountClusters(ctx, true, true, randomString())
+		initialClusters, err := manager.CountClusters(ctx, true, true, randomString(), nil)
 		Expect(err).To(BeNil())
-		initialCP, initialP, err := manager.CountProfilesByKind(ctx, true, true, randomString())
+		initialCP, initialP, err := manager.CountProfilesByKind(ctx, true, true, randomString(), nil)
 		Expect(err).To(BeNil())
 
 		sveltosCluster := &libsveltosv1beta1.SveltosCluster{
@@ -307,9 +307,9 @@ var _ = Describe("Stats", func() {
 			manager.RemoveProfile(cp)
 		}()
 
-		afterClusters, err := manager.CountClusters(ctx, true, true, randomString())
+		afterClusters, err := manager.CountClusters(ctx, true, true, randomString(), nil)
 		Expect(err).To(BeNil())
-		cpCount, pCount, err := manager.CountProfilesByKind(ctx, true, true, randomString())
+		cpCount, pCount, err := manager.CountProfilesByKind(ctx, true, true, randomString(), nil)
 		Expect(err).To(BeNil())
 
 		Expect(afterClusters.SveltosTotal()).To(Equal(initialClusters.SveltosTotal() + 1))

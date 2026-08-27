@@ -211,7 +211,7 @@ var _ = Describe("Manager", func() {
 		manager := server.GetManagerInstance()
 		manager.AddSveltosCluster(sveltosCluster)
 
-		clusters, err := manager.GetManagedSveltosClusters(context.TODO(), true, randomString())
+		clusters, err := manager.GetManagedSveltosClusters(context.TODO(), true, randomString(), nil)
 		Expect(err).To(BeNil())
 		v, ok := clusters[*clusterRef]
 		Expect(ok).To(BeTrue())
@@ -233,20 +233,20 @@ var _ = Describe("Manager", func() {
 		manager := server.GetManagerInstance()
 		manager.AddSveltosCluster(sveltosCluster)
 
-		clusters, err := manager.GetManagedSveltosClusters(context.TODO(), true, randomString())
+		clusters, err := manager.GetManagedSveltosClusters(context.TODO(), true, randomString(), nil)
 		Expect(err).To(BeNil())
 		_, ok := clusters[*clusterRef]
 		Expect(ok).To(BeTrue())
 
 		manager.RemoveSveltosCluster(sveltosCluster.Namespace, sveltosCluster.Name)
-		clusters, err = manager.GetManagedSveltosClusters(context.TODO(), true, randomString())
+		clusters, err = manager.GetManagedSveltosClusters(context.TODO(), true, randomString(), nil)
 		Expect(err).To(BeNil())
 		_, ok = clusters[*clusterRef]
 		Expect(ok).To(BeFalse())
 
 		// verify operation is idempotent
 		manager.RemoveSveltosCluster(sveltosCluster.Namespace, sveltosCluster.Name)
-		clusters, err = manager.GetManagedSveltosClusters(context.TODO(), true, randomString())
+		clusters, err = manager.GetManagedSveltosClusters(context.TODO(), true, randomString(), nil)
 		Expect(err).To(BeNil())
 		_, ok = clusters[*clusterRef]
 		Expect(ok).To(BeFalse())
@@ -274,7 +274,7 @@ var _ = Describe("Manager", func() {
 		manager := server.GetManagerInstance()
 		manager.AddCAPICluster(cluster)
 
-		clusters, err := manager.GetManagedCAPIClusters(context.TODO(), true, randomString())
+		clusters, err := manager.GetManagedCAPIClusters(context.TODO(), true, randomString(), nil)
 		Expect(err).To(BeNil())
 		v, ok := clusters[*clusterRef]
 		Expect(ok).To(BeTrue())
@@ -296,20 +296,20 @@ var _ = Describe("Manager", func() {
 		manager := server.GetManagerInstance()
 		manager.AddCAPICluster(cluster)
 
-		clusters, err := manager.GetManagedCAPIClusters(context.TODO(), true, randomString())
+		clusters, err := manager.GetManagedCAPIClusters(context.TODO(), true, randomString(), nil)
 		Expect(err).To(BeNil())
 		_, ok := clusters[*clusterRef]
 		Expect(ok).To(BeTrue())
 
 		manager.RemoveCAPICluster(cluster.Namespace, cluster.Name)
-		clusters, err = manager.GetManagedCAPIClusters(context.TODO(), true, randomString())
+		clusters, err = manager.GetManagedCAPIClusters(context.TODO(), true, randomString(), nil)
 		Expect(err).To(BeNil())
 		_, ok = clusters[*clusterRef]
 		Expect(ok).To(BeFalse())
 
 		// verify operation is idempotent
 		manager.RemoveCAPICluster(cluster.Namespace, cluster.Name)
-		clusters, err = manager.GetManagedCAPIClusters(context.TODO(), true, randomString())
+		clusters, err = manager.GetManagedCAPIClusters(context.TODO(), true, randomString(), nil)
 		Expect(err).To(BeNil())
 		_, ok = clusters[*clusterRef]
 		Expect(ok).To(BeFalse())
@@ -397,7 +397,7 @@ var _ = Describe("Manager", func() {
 		manager := server.GetManagerInstance()
 
 		// make sure there's already an existing cluster in the manager
-		clusters, err := manager.GetManagedCAPIClusters(context.TODO(), true, randomString())
+		clusters, err := manager.GetManagedCAPIClusters(context.TODO(), true, randomString(), nil)
 		Expect(err).To(BeNil())
 
 		Expect(len(clusters) == 1).To(BeTrue())
@@ -809,7 +809,7 @@ var _ = Describe("Manager", func() {
 		manager.AddProfile(profile0, libsveltosv1beta1.Selector{}, tier,
 			configv1beta1.SyncModeContinuous, nil)
 
-		profiles, err := manager.GetProfiles(context.TODO(), true, true, randomString())
+		profiles, err := manager.GetProfiles(context.TODO(), true, true, randomString(), nil)
 		Expect(err).To(BeNil())
 
 		Expect(len(profiles)).To(Equal(1))
@@ -833,7 +833,7 @@ var _ = Describe("Manager", func() {
 		manager.AddProfile(profile1, libsveltosv1beta1.Selector{}, tier,
 			configv1beta1.SyncModeContinuous, dependecies)
 
-		profiles, err = manager.GetProfiles(context.TODO(), true, true, randomString())
+		profiles, err = manager.GetProfiles(context.TODO(), true, true, randomString(), nil)
 		Expect(err).To(BeNil())
 
 		profileInfo, ok = profiles[*profile0]
@@ -854,7 +854,7 @@ var _ = Describe("Manager", func() {
 		manager.AddProfile(profile1, libsveltosv1beta1.Selector{}, tier,
 			configv1beta1.SyncModeContinuous, nil)
 
-		profiles, err = manager.GetProfiles(context.TODO(), true, true, randomString())
+		profiles, err = manager.GetProfiles(context.TODO(), true, true, randomString(), nil)
 		Expect(err).To(BeNil())
 
 		Expect(len(profiles)).To(Equal(2))
@@ -915,7 +915,7 @@ var _ = Describe("Manager", func() {
 		manager.AddProfile(profile2, libsveltosv1beta1.Selector{}, tier,
 			configv1beta1.SyncModeContinuous, dependecies)
 
-		profiles, err := manager.GetProfiles(context.TODO(), true, true, randomString())
+		profiles, err := manager.GetProfiles(context.TODO(), true, true, randomString(), nil)
 		Expect(err).To(BeNil())
 
 		profileInfo, ok := profiles[*profile0]
@@ -973,7 +973,7 @@ var _ = Describe("Manager", func() {
 		manager.AddProfile(profile1, libsveltosv1beta1.Selector{}, tier,
 			configv1beta1.SyncModeContinuous, dependecies)
 
-		profiles, err := manager.GetProfiles(context.TODO(), true, true, randomString())
+		profiles, err := manager.GetProfiles(context.TODO(), true, true, randomString(), nil)
 		Expect(err).To(BeNil())
 
 		profileInfo, ok := profiles[*profile0]
@@ -1024,7 +1024,7 @@ var _ = Describe("Manager", func() {
 		manager.AddProfile(profile1, libsveltosv1beta1.Selector{}, tier,
 			configv1beta1.SyncModeDryRun, nil)
 
-		profiles, err := manager.GetProfiles(context.TODO(), true, true, randomString())
+		profiles, err := manager.GetProfiles(context.TODO(), true, true, randomString(), nil)
 		Expect(err).To(BeNil())
 
 		_, ok := profiles[*profile0]

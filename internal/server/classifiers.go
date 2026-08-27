@@ -124,7 +124,7 @@ func getClassifiersInRange(classifiers []ClassifierSummary, limit, skip int) ([]
 // MatchingClusterCount still reflects the instance's total match count, not just
 // the filtered cluster.
 func (m *instance) getClassifiers(ctx context.Context, canListClassifiers, canListManagementClusterClassifiers bool,
-	user string, filters *classifierFilters) (ClassifierSummaries, error) {
+	user string, groups []string, filters *classifierFilters) (ClassifierSummaries, error) {
 
 	reportsByClassifier, reportsByMCC, err := m.listClassifierReportsByName(ctx)
 	if err != nil {
@@ -145,7 +145,7 @@ func (m *instance) getClassifiers(ctx context.Context, canListClassifiers, canLi
 		}
 
 		if !canListClassifiers {
-			ok, err := m.canGetClassifier(classifier.Name, user)
+			ok, err := m.canGetClassifier(classifier.Name, user, groups)
 			if err != nil || !ok {
 				continue
 			}
@@ -180,7 +180,7 @@ func (m *instance) getClassifiers(ctx context.Context, canListClassifiers, canLi
 		}
 
 		if !canListManagementClusterClassifiers {
-			ok, err := m.canGetManagementClusterClassifier(mcc.Name, user)
+			ok, err := m.canGetManagementClusterClassifier(mcc.Name, user, groups)
 			if err != nil || !ok {
 				continue
 			}
