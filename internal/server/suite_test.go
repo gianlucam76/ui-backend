@@ -22,12 +22,15 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/util"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
 	configv1beta1 "github.com/projectsveltos/addon-controller/api/v1beta1"
 	eventv1beta1 "github.com/projectsveltos/event-manager/api/v1beta1"
@@ -36,6 +39,13 @@ import (
 
 var (
 	scheme *runtime.Scheme
+
+	// testEnv/cfg back the SubjectAccessReview-authorization tests in k8s_utils_test.go:
+	// those exercise real RBAC evaluation (canList*/canGet* issue real SARs against a live
+	// apiserver), which a fake client.Client cannot do. envtest defaults to
+	// --authorization-mode=RBAC, so no extra apiserver flags are needed.
+	testEnv *envtest.Environment
+	cfg     *rest.Config
 )
 
 func TestControllers(t *testing.T) {
@@ -51,6 +61,16 @@ var _ = BeforeSuite(func() {
 	var err error
 	scheme, err = setupScheme()
 	Expect(err).To(BeNil())
+
+	testEnv = &envtest.Environment{}
+	cfg, err = testEnv.Start()
+	Expect(err).To(BeNil())
+	Expect(cfg).ToNot(BeNil())
+})
+
+var _ = AfterSuite(func() {
+	By("tearing down the test environment")
+	Expect(testEnv.Stop()).To(Succeed())
 })
 
 func setupScheme() (*runtime.Scheme, error) {
@@ -68,6 +88,9 @@ func setupScheme() (*runtime.Scheme, error) {
 		return nil, err
 	}
 	if err := eventv1beta1.AddToScheme(s); err != nil {
+		return nil, err
+	}
+	if err := apiextensionsv1.AddToScheme(s); err != nil {
 		return nil, err
 	}
 
